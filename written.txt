@@ -1,2 +1,14 @@
-2a.
-2b.
+2a. With batching (one glDrawArrays for all 10001 sprites, transforms applied in the vertex shader), the FPS converged to about 8.4 FPS;
+ the non-batched main_nobatch.cpp (one window.draw per sf::Sprite, ~10001 draw calls per frame) converged to about 8.2 FPS (both measured
+  under WSL2/WSLg, Release build, where OpenGL is translated to D3D12 by Mesa). Batching came out slightly ahead, but the gap is small 
+  because on this setup the frame time is dominated by fill rate and presentation overhead (10000 overlapping, alpha-blended quads, plus
+   WSLg forwarding every frame to the Windows compositor) rather than CPU draw-call overhead. On a native driver, where per-draw-call 
+   CPU/driver cost and texture rebinding are the bottleneck, collapsing ~10000 draw calls into one should give a much larger speedup.
+
+2b. We can give each sprite a depth value (e.g. a per-sprite z/layer stored alongside its transform, or as a third position component)
+ and write it into gl_Position.z in the vertex shader instead of 0, then enable the depth buffer we already requested (depthBits = 24)
+  with glEnable(GL_DEPTH_TEST) and glDepthFunc(GL_LESS/GL_LEQUAL), clearing GL_DEPTH_BUFFER_BIT each frame as we already do. 
+  The rasterizer then interpolates depth per fragment and the depth test automatically discards fragments behind already-drawn ones, 
+  so sprites are layered correctly regardless of their order in the single batched draw call, with no CPU-side sorting. (For translucent
+  sprites, fully transparent texels should be discarded in the fragment shader or those sprites drawn back-to-front, since depth testing
+  alone doesn't blend correctly.)
